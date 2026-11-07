@@ -109,8 +109,9 @@ const camera = new THREE.PerspectiveCamera(
     1000
 );
 
+player.position.set(0, 0, 0);
 camera.position.set(0, 1.6, 0);
-
+    
 player.add(camera);
 
 // Player physics
@@ -119,6 +120,12 @@ const velocity = new THREE.Vector3();
 
 let onGround = false;
 
+const PLAYER_HEIGHT = 1.6;
+const PLAYER_RADIUS = 0.25;
+
+player.position.set(0, 0, 0);
+camera.position.set(0, PLAYER_HEIGHT, 0);
+    
 // ==========================================
 // RENDERER
 // ==========================================
@@ -509,27 +516,26 @@ function updateHands(deltaTime) {
 
 function updateGravity(deltaTime) {
 
-    // Gravity
+    const gravity = 9.81;
 
-    velocity.y -= SETTINGS.gravity * deltaTime;
+    // Apply gravity
+    velocity.y -= gravity * deltaTime;
 
-    // Apply movement
-
+    // Apply velocity
     player.position.addScaledVector(
         velocity,
         deltaTime
     );
 
     // Ground collision
+    const groundHeight = 0;
 
-    if (player.position.y < 0) {
+    if (player.position.y < groundHeight) {
 
-        player.position.y = 0;
+        player.position.y = groundHeight;
 
         if (velocity.y < 0) {
-
             velocity.y = 0;
-
         }
 
         onGround = true;
@@ -540,18 +546,14 @@ function updateGravity(deltaTime) {
 
     }
 
-    // Friction
+    // Air resistance
+    const friction = onGround ? 0.98 : 0.995;
 
-    const friction = onGround
-        ? SETTINGS.groundFriction
-        : SETTINGS.airFriction;
-
-    velocity.multiplyScalar(
-        Math.pow(friction, deltaTime * 60)
-    );
+    velocity.x *= Math.pow(friction, deltaTime * 60);
+    velocity.z *= Math.pow(friction, deltaTime * 60);
 
 }
-
+    
 // ==========================================
 // DESKTOP CONTROLS
 // ==========================================
