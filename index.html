@@ -3,8 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Gorilla Tag Fan Game - V3</title>
+<title>Gorilla Tag Fan Game - V4</title>
 
 <style>
     body {
@@ -26,13 +25,8 @@
         pointer-events: none;
     }
 
-    #info h2 {
-        margin: 0 0 8px;
-    }
-
-    #info p {
-        margin: 4px 0;
-    }
+    #info h2 { margin: 0 0 8px; }
+    #info p { margin: 4px 0; }
 </style>
 
 <script type="importmap">
@@ -48,11 +42,11 @@
 <body>
 
 <div id="info">
-    <h2>GORILLA TAG FAN GAME V3</h2>
+    <h2>GORILLA TAG FAN GAME V4</h2>
     <p>VR: Press Enter VR</p>
-    <p>Movement: Push off surfaces with your hands</p>
+    <p>Movement: Push against surfaces with your hands</p>
     <p>Desktop: WASD + Mouse</p>
-    <p>Locomotion: Hand Physics</p>
+    <p>Physics: Updated</p>
 </div>
 
 <script type="module">
@@ -65,20 +59,12 @@ import { VRButton } from 'three/addons/webxr/VRButton.js';
 // ==========================================
 
 const SETTINGS = {
-    handRadius: 0.11,
-
-    gravity: 9.81,
-
-    maxVelocity: 9,
-
-    // Maximum distance a hand can stretch
+    handRadius: 0.12,
     handReach: 1.15,
-
-    // Air resistance
-    airFriction: 0.995,
-
-    // Ground resistance
-    groundFriction: 0.98
+    gravity: 9.81,
+    maxVelocity: 9,
+    groundFriction: 0.98,
+    airFriction: 0.995
 };
 
 // ==========================================
@@ -96,14 +82,14 @@ scene.fog = new THREE.Fog(
 );
 
 // ==========================================
-// PLAYER
+// PLAYER RIG
 // ==========================================
 
-const player = new THREE.Group();
+const rig = new THREE.Group();
 
-scene.add(player);
+scene.add(rig);
 
-player.position.set(0, 0, 0);
+rig.position.set(0, 0, 0);
 
 const camera = new THREE.PerspectiveCamera(
     75,
@@ -112,19 +98,19 @@ const camera = new THREE.PerspectiveCamera(
     1000
 );
 
+// Desktop camera height.
+// This will be set to zero while in VR.
 camera.position.set(0, 1.6, 0);
 
-player.add(camera);
+rig.add(camera);
 
 // ==========================================
-// PLAYER PHYSICS
+// PHYSICS
 // ==========================================
 
 const velocity = new THREE.Vector3();
 
 let onGround = false;
-
-const PLAYER_HEIGHT = 1.6;
 
 // ==========================================
 // RENDERER
@@ -145,8 +131,10 @@ renderer.setPixelRatio(
 
 renderer.xr.enabled = true;
 
-renderer.shadowMap.enabled = true;
+// Use a floor-level coordinate system in VR.
+renderer.xr.setReferenceSpaceType('local-floor');
 
+renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -175,35 +163,24 @@ const sun = new THREE.DirectionalLight(
 );
 
 sun.position.set(10, 20, 10);
-
 sun.castShadow = true;
-
 sun.shadow.mapSize.set(1024, 1024);
 
 scene.add(sun);
 
 // ==========================================
-// BASEPLATE
+// GROUND
 // ==========================================
 
-const groundGeometry = new THREE.BoxGeometry(
-    100,
-    1,
-    100
-);
-
-const groundMaterial = new THREE.MeshStandardMaterial({
-    color: 0x42a542,
-    roughness: 1
-});
-
 const ground = new THREE.Mesh(
-    groundGeometry,
-    groundMaterial
+    new THREE.BoxGeometry(100, 1, 100),
+    new THREE.MeshStandardMaterial({
+        color: 0x42a542,
+        roughness: 1
+    })
 );
 
 ground.position.y = -0.5;
-
 ground.receiveShadow = true;
 
 scene.add(ground);
@@ -216,37 +193,26 @@ const grid = new THREE.GridHelper(
 );
 
 grid.position.y = 0.005;
-
 scene.add(grid);
 
 // ==========================================
-// PHYSICAL OBJECTS
+// COLLIDABLE OBJECTS
 // ==========================================
 
 const colliders = [];
 
 function createCube(x, y, z, color, size) {
 
-    const geometry = new THREE.BoxGeometry(
-        size,
-        size,
-        size
-    );
-
-    const material = new THREE.MeshStandardMaterial({
-        color: color,
-        roughness: 0.8
-    });
-
     const cube = new THREE.Mesh(
-        geometry,
-        material
+        new THREE.BoxGeometry(size, size, size),
+        new THREE.MeshStandardMaterial({
+            color,
+            roughness: 0.8
+        })
     );
 
     cube.position.set(x, y, z);
-
     cube.castShadow = true;
-
     cube.receiveShadow = true;
 
     scene.add(cube);
@@ -257,22 +223,17 @@ function createCube(x, y, z, color, size) {
             y - size / 2,
             z - size / 2
         ),
-
         max: new THREE.Vector3(
             x + size / 2,
             y + size / 2,
             z + size / 2
         )
     });
-
 }
 
 createCube(5, 1, -5, 0xff0000, 2);
-
 createCube(-5, 1, -5, 0x0000ff, 2);
-
 createCube(5, 1, 5, 0xffff00, 2);
-
 createCube(-5, 1, 5, 0xff00ff, 2);
 
 // ==========================================
@@ -280,38 +241,29 @@ createCube(-5, 1, 5, 0xff00ff, 2);
 // ==========================================
 
 const controllers = [];
-
 const handMeshes = [];
-
 const handMaterials = [];
 
-const handAnchors = [
-    null,
-    null
-];
+const handAnchors = [null, null];
 
 for (let i = 0; i < 2; i++) {
 
     const controller = renderer.xr.getController(i);
 
-    // Keep controllers attached to the player rig.
-    player.add(controller);
+    // Controllers and camera share the same rig.
+    rig.add(controller);
 
     controllers.push(controller);
 
-    const geometry = new THREE.SphereGeometry(
-        SETTINGS.handRadius,
-        16,
-        16
-    );
-
-    const material = new THREE.MeshStandardMaterial({
-        color: i === 0 ? 0xffbb55 : 0xff8855
-    });
-
     const hand = new THREE.Mesh(
-        geometry,
-        material
+        new THREE.SphereGeometry(
+            SETTINGS.handRadius,
+            16,
+            16
+        ),
+        new THREE.MeshStandardMaterial({
+            color: i === 0 ? 0xffbb55 : 0xff8855
+        })
     );
 
     hand.castShadow = true;
@@ -319,45 +271,36 @@ for (let i = 0; i < 2; i++) {
     controller.add(hand);
 
     handMeshes.push(hand);
+    handMaterials.push(hand.material);
+}
 
-    handMaterials.push(material);
+// ==========================================
+// HAND STATE
+// ==========================================
+
+function setHandAnchored(index, anchored) {
+
+    handMaterials[index].color.set(
+        anchored
+            ? 0x55ff55
+            : index === 0
+                ? 0xffbb55
+                : 0xff8855
+    );
 
 }
 
 // ==========================================
-// TEMPORARY VECTORS
-// ==========================================
-
-const handWorldPositions = [
-    new THREE.Vector3(),
-    new THREE.Vector3()
-];
-
-const correctionVectors = [
-    new THREE.Vector3(),
-    new THREE.Vector3()
-];
-
-const totalMovement = new THREE.Vector3();
-
-const temporaryVector = new THREE.Vector3();
-
-const closestPoint = new THREE.Vector3();
-
-// ==========================================
-// HAND COLLISION DETECTION
+// COLLISION DETECTION
 // ==========================================
 
 function getHandCollision(position) {
 
     const radius = SETTINGS.handRadius;
 
-    // --------------------------------------
-    // GROUND COLLISION
-    // --------------------------------------
-
+    // Ground collision.
     if (
-        position.y < radius &&
+        position.y <= radius &&
         Math.abs(position.x) < 49.5 &&
         Math.abs(position.z) < 49.5
     ) {
@@ -370,25 +313,20 @@ function getHandCollision(position) {
 
     }
 
-    // --------------------------------------
-    // CUBE COLLISION
-    // --------------------------------------
-
+    // Cube collision.
     for (const box of colliders) {
 
-        closestPoint.set(
+        const closest = new THREE.Vector3(
             THREE.MathUtils.clamp(
                 position.x,
                 box.min.x,
                 box.max.x
             ),
-
             THREE.MathUtils.clamp(
                 position.y,
                 box.min.y,
                 box.max.y
             ),
-
             THREE.MathUtils.clamp(
                 position.z,
                 box.min.z,
@@ -396,138 +334,98 @@ function getHandCollision(position) {
             )
         );
 
-        const distance = position.distanceTo(
-            closestPoint
-        );
+        const difference = new THREE.Vector3()
+            .subVectors(position, closest);
 
-        if (distance < radius) {
+        const distance = difference.length();
 
-            const normal = new THREE.Vector3();
+        if (distance >= radius) continue;
 
-            // Hand is outside the box.
-            if (distance > 0.0001) {
+        // Outside the box.
+        if (distance > 0.0001) {
 
-                normal.subVectors(
-                    position,
-                    closestPoint
-                ).normalize();
-
-                return closestPoint.clone().addScaledVector(
-                    normal,
-                    radius
-                );
-
-            }
-
-            // Hand is inside the box.
-            // Find the closest face.
-
-            const distances = [
-                position.x - box.min.x,
-                box.max.x - position.x,
-
-                position.y - box.min.y,
-                box.max.y - position.y,
-
-                position.z - box.min.z,
-                box.max.z - position.z
-            ];
-
-            const smallest = Math.min(...distances);
-
-            const surfacePoint = position.clone();
-
-            if (smallest === distances[0]) {
-                normal.set(-1, 0, 0);
-                surfacePoint.x = box.min.x;
-            }
-            else if (smallest === distances[1]) {
-                normal.set(1, 0, 0);
-                surfacePoint.x = box.max.x;
-            }
-            else if (smallest === distances[2]) {
-                normal.set(0, -1, 0);
-                surfacePoint.y = box.min.y;
-            }
-            else if (smallest === distances[3]) {
-                normal.set(0, 1, 0);
-                surfacePoint.y = box.max.y;
-            }
-            else if (smallest === distances[4]) {
-                normal.set(0, 0, -1);
-                surfacePoint.z = box.min.z;
-            }
-            else {
-                normal.set(0, 0, 1);
-                surfacePoint.z = box.max.z;
-            }
-
-            return surfacePoint.addScaledVector(
-                normal,
+            return closest.addScaledVector(
+                difference.normalize(),
                 radius
             );
 
         }
 
+        // Inside the box: find the nearest face.
+        const distances = [
+            position.x - box.min.x,
+            box.max.x - position.x,
+            position.y - box.min.y,
+            box.max.y - position.y,
+            position.z - box.min.z,
+            box.max.z - position.z
+        ];
+
+        const smallest = Math.min(...distances);
+
+        const normal = new THREE.Vector3();
+        const surface = position.clone();
+
+        if (smallest === distances[0]) {
+            normal.set(-1, 0, 0);
+            surface.x = box.min.x;
+        } else if (smallest === distances[1]) {
+            normal.set(1, 0, 0);
+            surface.x = box.max.x;
+        } else if (smallest === distances[2]) {
+            normal.set(0, -1, 0);
+            surface.y = box.min.y;
+        } else if (smallest === distances[3]) {
+            normal.set(0, 1, 0);
+            surface.y = box.max.y;
+        } else if (smallest === distances[4]) {
+            normal.set(0, 0, -1);
+            surface.z = box.min.z;
+        } else {
+            normal.set(0, 0, 1);
+            surface.z = box.max.z;
+        }
+
+        return surface.addScaledVector(
+            normal,
+            radius
+        );
     }
 
     return null;
-
 }
 
 // ==========================================
-// HAND VISUALS
+// HAND LOCOMOTION
 // ==========================================
 
-function setHandAnchored(index, anchored) {
+const handPositions = [
+    new THREE.Vector3(),
+    new THREE.Vector3()
+];
 
-    if (anchored) {
+const totalCorrection = new THREE.Vector3();
 
-        handMaterials[index].color.set(0x55ff55);
-
-    } else {
-
-        handMaterials[index].color.set(
-            index === 0 ? 0xffbb55 : 0xff8855
-        );
-
-    }
-
-}
-
-// ==========================================
-// GORILLA TAG LOCOMOTION
-// ==========================================
+const correction = new THREE.Vector3();
 
 function updateHands(deltaTime) {
 
-    totalMovement.set(0, 0, 0);
+    totalCorrection.set(0, 0, 0);
 
-    let activeHands = 0;
+    let anchoredCount = 0;
 
-    // Update world matrices so controller positions
-    // include the player's current movement.
-
+    // Make sure world positions are current.
     scene.updateMatrixWorld(true);
-
-    // --------------------------------------
-    // CHECK BOTH HANDS
-    // --------------------------------------
 
     for (let i = 0; i < 2; i++) {
 
         const controller = controllers[i];
-
-        const handPosition = handWorldPositions[i];
-
-        const correction = correctionVectors[i];
+        const handPosition = handPositions[i];
 
         controller.getWorldPosition(handPosition);
 
-        correction.set(0, 0, 0);
-
         // ----------------------------------
-        // EXISTING HAND ANCHOR
+        // EXISTING ANCHOR
         // ----------------------------------
 
         if (handAnchors[i] !== null) {
@@ -535,8 +433,6 @@ function updateHands(deltaTime) {
             const distance = handPosition.distanceTo(
                 handAnchors[i]
             );
-
-            // Release if the arm stretches too far.
 
             if (distance > SETTINGS.handReach) {
 
@@ -546,24 +442,20 @@ function updateHands(deltaTime) {
 
             } else {
 
-                // Calculate how far the hand has moved
-                // away from its anchored position.
-
                 correction.subVectors(
                     handAnchors[i],
                     handPosition
                 );
 
-                totalMovement.add(correction);
+                totalCorrection.add(correction);
 
-                activeHands++;
+                anchoredCount++;
 
             }
-
         }
 
         // ----------------------------------
-        // FIND NEW HAND CONTACT
+        // NEW COLLISION
         // ----------------------------------
 
         if (handAnchors[i] === null) {
@@ -578,92 +470,66 @@ function updateHands(deltaTime) {
 
                 setHandAnchored(i, true);
 
-                // Correct any initial penetration.
-
                 correction.subVectors(
-                    handAnchors[i],
+                    collision,
                     handPosition
                 );
 
-                totalMovement.add(correction);
+                totalCorrection.add(correction);
 
-                activeHands++;
+                anchoredCount++;
 
             }
-
         }
-
     }
 
     // --------------------------------------
-    // APPLY PLAYER MOVEMENT
+    // APPLY MOVEMENT
     // --------------------------------------
 
-    if (activeHands > 0) {
+    if (anchoredCount > 0) {
 
-        // Average both hands so two anchored hands
-        // don't accidentally double the movement.
+        totalCorrection.divideScalar(anchoredCount);
 
-        totalMovement.divideScalar(activeHands);
+        // Move the rig opposite to the hand movement.
+        rig.position.add(totalCorrection);
 
-        // Move the player opposite the hand movement.
+        // Calculate velocity from actual movement.
+        const movementVelocity = totalCorrection.clone()
+            .divideScalar(Math.max(deltaTime, 0.001));
 
-        player.position.add(totalMovement);
-
-        // Convert hand movement into velocity.
-        // This creates momentum when a hand moves quickly.
-
-        velocity.copy(totalMovement).divideScalar(
-            Math.max(deltaTime, 0.001)
-        );
-
-        // Limit maximum velocity.
-
-        if (velocity.length() > SETTINGS.maxVelocity) {
-
-            velocity.setLength(
-                SETTINGS.maxVelocity
-            );
-
+        if (movementVelocity.length() > SETTINGS.maxVelocity) {
+            movementVelocity.setLength(SETTINGS.maxVelocity);
         }
 
-        // Update matrices after moving the player.
-
-        scene.updateMatrixWorld(true);
+        velocity.copy(movementVelocity);
 
     }
 
 }
 
 // ==========================================
-// PLAYER GRAVITY
+// GRAVITY AND PLAYER PHYSICS
 // ==========================================
 
 function updateGravity(deltaTime) {
 
-    // Apply gravity.
-
+    // Gravity.
     velocity.y -= SETTINGS.gravity * deltaTime;
 
-    // Apply velocity.
-
-    player.position.addScaledVector(
+    // Move the player.
+    rig.position.addScaledVector(
         velocity,
         deltaTime
     );
 
-    // --------------------------------------
-    // GROUND COLLISION
-    // --------------------------------------
+    // Ground collision.
+    if (rig.position.y < 0) {
 
-    if (player.position.y < 0) {
-
-        player.position.y = 0;
+        rig.position.y = 0;
 
         if (velocity.y < 0) {
-
             velocity.y = 0;
-
         }
 
         onGround = true;
@@ -674,24 +540,13 @@ function updateGravity(deltaTime) {
 
     }
 
-    // --------------------------------------
-    // FRICTION
-    // --------------------------------------
-
+    // Friction.
     const friction = onGround
         ? SETTINGS.groundFriction
         : SETTINGS.airFriction;
 
-    velocity.x *= Math.pow(
-        friction,
-        deltaTime * 60
-    );
-
-    velocity.z *= Math.pow(
-        friction,
-        deltaTime * 60
-    );
-
+    velocity.x *= Math.pow(friction, deltaTime * 60);
+    velocity.z *= Math.pow(friction, deltaTime * 60);
 }
 
 // ==========================================
@@ -701,33 +556,23 @@ function updateGravity(deltaTime) {
 const keys = {};
 
 document.addEventListener('keydown', event => {
-
     keys[event.code] = true;
-
 });
 
 document.addEventListener('keyup', event => {
-
     keys[event.code] = false;
-
 });
 
 let mouseDown = false;
 
 document.addEventListener('mousedown', () => {
-
     if (!renderer.xr.isPresenting) {
-
         mouseDown = true;
-
     }
-
 });
 
 document.addEventListener('mouseup', () => {
-
     mouseDown = false;
-
 });
 
 document.addEventListener('mousemove', event => {
@@ -737,7 +582,6 @@ document.addEventListener('mousemove', event => {
     camera.rotation.order = 'YXZ';
 
     camera.rotation.y -= event.movementX * 0.002;
-
     camera.rotation.x -= event.movementY * 0.002;
 
     camera.rotation.x = THREE.MathUtils.clamp(
@@ -745,19 +589,15 @@ document.addEventListener('mousemove', event => {
         -1.5,
         1.5
     );
-
 });
 
 function updateDesktop(deltaTime) {
-
-    if (renderer.xr.isPresenting) return;
 
     const direction = new THREE.Vector3();
 
     camera.getWorldDirection(direction);
 
     direction.y = 0;
-
     direction.normalize();
 
     const right = new THREE.Vector3()
@@ -770,83 +610,61 @@ function updateDesktop(deltaTime) {
     const speed = 5 * deltaTime;
 
     if (keys['KeyW']) {
-
-        player.position.addScaledVector(
-            direction,
-            speed
-        );
-
+        rig.position.addScaledVector(direction, speed);
     }
 
     if (keys['KeyS']) {
-
-        player.position.addScaledVector(
-            direction,
-            -speed
-        );
-
+        rig.position.addScaledVector(direction, -speed);
     }
 
     if (keys['KeyA']) {
-
-        player.position.addScaledVector(
-            right,
-            -speed
-        );
-
+        rig.position.addScaledVector(right, -speed);
     }
 
     if (keys['KeyD']) {
-
-        player.position.addScaledVector(
-            right,
-            speed
-        );
-
+        rig.position.addScaledVector(right, speed);
     }
-
 }
 
 // ==========================================
 // VR SESSION EVENTS
 // ==========================================
 
-renderer.xr.addEventListener(
-    'sessionstart',
-    () => {
+renderer.xr.addEventListener('sessionstart', () => {
 
-        handAnchors[0] = null;
+    // Critical: the XR camera already receives its
+    // height from the headset's floor-level tracking.
 
-        handAnchors[1] = null;
+    camera.position.set(0, 0, 0);
 
-        velocity.set(0, 0, 0);
+    rig.position.set(0, 0, 0);
 
-        setHandAnchored(0, false);
+    velocity.set(0, 0, 0);
 
-        setHandAnchored(1, false);
+    handAnchors[0] = null;
+    handAnchors[1] = null;
 
-    }
-);
+    setHandAnchored(0, false);
+    setHandAnchored(1, false);
 
-renderer.xr.addEventListener(
-    'sessionend',
-    () => {
+});
 
-        handAnchors[0] = null;
+renderer.xr.addEventListener('sessionend', () => {
 
-        handAnchors[1] = null;
+    camera.position.set(0, 1.6, 0);
 
-        velocity.set(0, 0, 0);
+    velocity.set(0, 0, 0);
 
-        setHandAnchored(0, false);
+    handAnchors[0] = null;
+    handAnchors[1] = null;
 
-        setHandAnchored(1, false);
+    setHandAnchored(0, false);
+    setHandAnchored(1, false);
 
-    }
-);
+});
 
 // ==========================================
-// WINDOW RESIZING
+// RESIZE
 // ==========================================
 
 window.addEventListener('resize', () => {
@@ -864,7 +682,7 @@ window.addEventListener('resize', () => {
 });
 
 // ==========================================
-// MAIN GAME LOOP
+// MAIN LOOP
 // ==========================================
 
 const clock = new THREE.Clock();
@@ -878,10 +696,8 @@ function animate() {
 
     if (renderer.xr.isPresenting) {
 
-        // Gravity happens first.
         updateGravity(deltaTime);
 
-        // Then the hands push against surfaces.
         updateHands(deltaTime);
 
     } else {
@@ -890,10 +706,7 @@ function animate() {
 
     }
 
-    renderer.render(
-        scene,
-        camera
-    );
+    renderer.render(scene, camera);
 
 }
 
